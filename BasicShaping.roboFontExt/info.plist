@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>addToMenu</key>
+	<array/>
+	<key>developer</key>
+	<string>TypeMyType</string>
+	<key>developerURL</key>
+	<string>http://typemytype.com</string>
+	<key>html</key>
+	<false/>
+	<key>launchAtStartUp</key>
+	<integer>1</integer>
+	<key>mainScript</key>
+	<string>CoreTextShaping.py</string>
+	<key>name</key>
+	<string>BasicShaping</string>
+	<key>requiresVersionMajor</key>
+	<string>3</string>
+	<key>requiresVersionMinor</key>
+	<string>3</string>
+	<key>timeStamp</key>
+	<real>1572111820.1723788</real>
+	<key>version</key>
+	<string>1.0</string>
+</dict>
+</plist>
