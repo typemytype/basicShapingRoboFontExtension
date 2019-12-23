@@ -1,2 +1,3 @@
-# basicShapingRoboFontExtension
-Basic Arabic shaping for RoboFont 3.4
+# Basic Shaping
+
+Basic Arabic shaping for RoboFont 3.4.
