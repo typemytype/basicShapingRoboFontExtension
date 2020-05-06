@@ -8,7 +8,7 @@ from lib.UI.spaceCenter.glyphSequenceEditText import *
 
 FONTDATA_REP = 'com.typemytype.basicShaping.fontData'
 
-def getFeatures(font):
+def getFeatures(font, glyphOrder):
     if font.features.text is not None and font.features.text.strip():
         return font.features.text
     fea = f"""
@@ -23,8 +23,8 @@ languagesystem arab dflt;
 
 def fontData(font):
     cmap = font.unicodeData
-    fea = getFeatures(font)
     glyphOrder = sorted(set(font.keys()) | set(["space", ".notdef", ".fallbackGlyph"]))
+    fea = getFeatures(font, glyphOrder)
     fb = FontBuilder(1024, isTTF=True)
     fb.setupGlyphOrder(glyphOrder)
     fb.setupCharacterMap({uni: names[0] for uni, names in cmap.items()})
