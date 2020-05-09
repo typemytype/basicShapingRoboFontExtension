@@ -2,36 +2,24 @@ import AppKit
 import CoreText
 import io
 from fontTools.fontBuilder import FontBuilder
+from fontTools.feaLib.builder import addOpenTypeFeatures
 from fontTools.ttLib.tables._g_l_y_f import Glyph as FontToolsGlyph
-
 from lib.UI.spaceCenter.glyphSequenceEditText import *
+from arabicFeatures import getFeatures
 
 FONTDATA_REP = 'com.typemytype.basicShaping.fontData'
-
-def getFeatures(font, glyphOrder):
-    if font.features.text is not None and font.features.text.strip():
-        return font.features.text
-    fea = f"""
-languagesystem DFLT dflt;
-languagesystem arab dflt;
-
-{featurePartWriter(glyphOrder, "init")}
-{featurePartWriter(glyphOrder, "medi")}
-{featurePartWriter(glyphOrder, "fina")}
-"""
-    return fea
 
 def fontData(font):
     cmap = font.unicodeData
     glyphOrder = sorted(set(font.keys()) | set(["space", ".notdef", ".fallbackGlyph"]))
-    fea = getFeatures(font, glyphOrder)
+    fea = getFeatures(font)
     fb = FontBuilder(1024, isTTF=True)
     fb.setupGlyphOrder(glyphOrder)
     fb.setupCharacterMap({uni: names[0] for uni, names in cmap.items()})
-    fb.addOpenTypeFeatures(fea, font.path)
     fb.setupGlyf({glyphName: _dummyGlyph for glyphName in glyphOrder})
     fb.setupHorizontalMetrics({glyphName: (0, 0) for glyphName in glyphOrder})
     fb.setupHorizontalHeader(ascent=0, descent=0)
+    addOpenTypeFeatures(fb.font, fea)
     data = io.BytesIO()
     fb.save(data)
     data = data.getvalue()
