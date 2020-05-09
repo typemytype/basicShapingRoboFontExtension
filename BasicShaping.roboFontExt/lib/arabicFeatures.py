@@ -56,12 +56,13 @@ def getFeatures(font):
         suffix = f".{suffix}"
         lenSuffix = len(suffix)
         sourceList = [g for g in glyphSet if g.endswith(suffix) and g[:-lenSuffix] in glyphSet]
-        targetList = [g[:-lenSuffix] for g in sourceList]
-        source = GlyphClass(targetList)
-        target = GlyphClass(sourceList)
-        sub = SingleSubstStatement([source], [target], [], [], False)
-        fea.statements.append(sub)
-        feaFileAst.statements.insert(feaIndex, fea)
+        if sourceList:
+            targetList = [g[:-lenSuffix] for g in sourceList]
+            source = GlyphClass(targetList)
+            target = GlyphClass(sourceList)
+            sub = SingleSubstStatement([source], [target], [], [], False)
+            fea.statements.append(sub)
+            feaFileAst.statements.insert(feaIndex, fea)
     return feaFileAst
 
 if __name__ == '__main__':
