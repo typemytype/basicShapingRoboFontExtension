@@ -9,8 +9,9 @@ from arabicFeatures import getFeatures
 
 FONTDATA_REP = 'com.typemytype.basicShaping.fontData'
 
-def fontData(font):
-    cmap = font.unicodeData
+def fontData(features, cmap):
+    cmap = dict(cmap)  # cmap as arg is a hack that destorys the cache if a glyph name or a unicode has changed.
+    font = features.font
     glyphOrder = sorted(set(font.keys()) | set(["space", ".notdef", ".fallbackGlyph"]))
     fea = getFeatures(font)
     fb = FontBuilder(1024, isTTF=True)
@@ -26,39 +27,30 @@ def fontData(font):
     data = AppKit.NSData.dataWithBytes_length_(data, len(data))
     return data, fb.font
 
-def registerFontDataFactory(DEBUG=True):
-    from defcon import registerRepresentationFactory, Font
-    if DEBUG:
-        if FONTDATA_REP in Font.representationFactories:
-            for font in AllFonts():
-                font.naked().destroyAllRepresentations()
-        registerRepresentationFactory(Font, FONTDATA_REP, fontData, destructiveNotifications=["Font.GlyphOrderChanged", "Glyph.UnicodesChanged", "Features.Changed"])
-    else:
-        if FONTDATA_REP not in Font.representationFactories:
-            registerRepresentationFactory(Font, FONTDATA_REP, fontData, destructiveNotifications=["Font.GlyphOrderChanged", "Glyph.UnicodesChanged", "Features.Changed"])
+def registerFontDataRepFactory():
+    from defcon import registerRepresentationFactory, Features
+    if FONTDATA_REP in Features.representationFactories:
+        for font in AllFonts():
+            font.features.naked().destroyAllRepresentations()
+    registerRepresentationFactory(Features, FONTDATA_REP, fontData, destructiveNotifications=["Features.Changed"])
 
-def featurePartWriter(glyphOrder, feaTag):
-    suffix = f".{feaTag}"
-    lenSuffix = len(suffix)
-    glyphNames = [glyphName for glyphName in glyphOrder if glyphName.endswith(suffix) and glyphName[:-lenSuffix] in glyphOrder]
-    return f"""
-feature {feaTag} {{
-    script arab;
-        sub [{" ".join([glyphName[:-lenSuffix] for glyphName in glyphNames])}] by [{" ".join(glyphNames)}];
-}} {feaTag};
-"""
+def _hashsableCmap(cmap):
+    d = {}
+    for k, v in cmap.items():
+        d[k] = tuple(v)
+    return tuple(sorted(d.items()))
 
 _dummyGlyph = FontToolsGlyph()
 
 LTR = 0
 RTL = 1
 
-def mergeUnicodeStack(font, glyphNames, stack, cmap, glyphOrder, direction):
+def mergeUnicodeStack(font, glyphNames, stack, cmap, hashableCmap, glyphOrder, direction):
     if not stack:
         return
     if len(stack) > 1:
         # cache this...
-        data, ftFont = font.getRepresentation(FONTDATA_REP)
+        data, ftFont = font.features.getRepresentation(FONTDATA_REP, cmap=hashableCmap)
         fontProvider = CoreText.CGDataProviderCreateWithCFData(data)
         cgFont = CoreText.CGFontCreateWithDataProvider(fontProvider)
         ctFont = CoreText.CTFontCreateWithGraphicsFont(cgFont, 0, None, None)
@@ -98,7 +90,7 @@ def splitText(font, text, cmap, groups=dict(), allowShapingWithGlyphs=None, dire
     text = text.replace("%s " % currentGlyphKey, currentGlyphKey)
     text = text.replace("%s " % currentSelectionKey, currentSelectionKey)
     glyphNames = []
-
+    hashableCmap = _hashsableCmap(cmap)
     for lineNumber, newLine in enumerate(text.split(newLineKey)):
         if lineNumber > 0:
             glyphNames.append(newLineKey)
@@ -121,7 +113,7 @@ def splitText(font, text, cmap, groups=dict(), allowShapingWithGlyphs=None, dire
                     # start a glyph name compile.
                     if c == "/":
                         if unicodeStack:
-                            mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+                            mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, hashableCmap, allowShapingWithGlyphs, direction)
                         unicodeStack = []
                         # finishing a previous compile.
                         if compileStack is not None:
@@ -146,18 +138,18 @@ def splitText(font, text, cmap, groups=dict(), allowShapingWithGlyphs=None, dire
                         if ord(c) not in cmap:
                             glyphNames.append(c)
                             if unicodeStack:
-                                mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+                                mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, hashableCmap, allowShapingWithGlyphs, direction)
                             unicodeStack = []
                         else:
                             unicodeStack.append(c)
                 if unicodeStack:
-                    mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+                    mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, hashableCmap, allowShapingWithGlyphs, direction)
                 unicodeStack = []
     # catch remaining compile.
     if compileStack is not None and compileStack:
         mergeCompileStack(glyphNames, compileStack, groups)
     elif unicodeStack:
-        mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+        mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, hashableCmap, allowShapingWithGlyphs, direction)
     return glyphNames
 
 # overwrite internals
@@ -169,7 +161,7 @@ def get(self):
     glyphNames = splitText(self._font, text, self._layer.unicodeData, self._font.groups, self._font.keys(), direction)
     return glyphNames
 
-registerFontDataFactory()
+registerFontDataRepFactory()
 import lib.UI.spaceCenter.glyphSequenceEditText
 lib.UI.spaceCenter.glyphSequenceEditText.GlyphSequenceEditText.get = get
 lib.UI.spaceCenter.glyphSequenceEditText.GlyphSequenceEditComboBox.get = get
