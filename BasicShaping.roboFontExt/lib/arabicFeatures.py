@@ -42,7 +42,7 @@ def getFeatures(font):
     astIndexMap = getAstIndexMap(feaFileAst)
     if "Arab" not in langSysMap:
         arabLang = LanguageSystemStatement("Arab", "dftl")
-        index = max(astIndexMap.get(LanguageSystemStatement, 0)) + 1
+        index = max(astIndexMap.get(LanguageSystemStatement, [-1])) + 1
         feaFileAst.statements.insert(index, arabLang)
     feaTags = findFeatureTags(feaFileAst)
     if set(SUFFIX_FEA_MAP.values()) - feaTags == set():
