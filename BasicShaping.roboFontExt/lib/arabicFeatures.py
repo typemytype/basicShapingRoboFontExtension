@@ -1,3 +1,4 @@
+from fontTools.feaLib.error import FeatureLibError
 from fontTools.feaLib.parser import Parser
 from fontTools.feaLib.ast import *
 from ufo2ft.featureWriters.ast import getScriptLanguageSystems, findFeatureTags
