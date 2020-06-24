@@ -2,34 +2,55 @@ import AppKit
 import CoreText
 import io
 from fontTools.fontBuilder import FontBuilder
+from fontTools.feaLib.builder import addOpenTypeFeatures
 from fontTools.ttLib.tables._g_l_y_f import Glyph as FontToolsGlyph
-
 from lib.UI.spaceCenter.glyphSequenceEditText import *
+from arabicFeatures import getFeatures
 
+FONTDATA_REP = 'com.typemytype.basicShaping.fontData'
 
-def featurePartWriter(glyphOrder, feaTag):
-    suffix = f".{feaTag}"
-    lenSuffix = len(suffix)
-    glyphNames = [glyphName for glyphName in glyphOrder if glyphName.endswith(suffix) and glyphName[:-lenSuffix] in glyphOrder]
-    return f"""
-feature {feaTag} {{
-    script arab;
-        sub [{" ".join([glyphName[:-lenSuffix] for glyphName in glyphNames])}] by [{" ".join(glyphNames)}];
-}} {feaTag};
-"""
+def fontData(features, cmap):
+    cmap = dict(cmap)  # cmap as arg is a hack that destorys the cache if a glyph name or a unicode has changed.
+    font = features.font
+    glyphOrder = sorted(set(font.keys()) | set(["space", ".notdef", ".fallbackGlyph"]))
+    fea = getFeatures(font)
+    fb = FontBuilder(1024, isTTF=True)
+    fb.setupGlyphOrder(glyphOrder)
+    fb.setupCharacterMap({uni: names[0] for uni, names in cmap.items()})
+    fb.setupGlyf({glyphName: _dummyGlyph for glyphName in glyphOrder})
+    fb.setupHorizontalMetrics({glyphName: (0, 0) for glyphName in glyphOrder})
+    fb.setupHorizontalHeader(ascent=0, descent=0)
+    addOpenTypeFeatures(fb.font, fea)
+    data = io.BytesIO()
+    fb.save(data)
+    data = data.getvalue()
+    data = AppKit.NSData.dataWithBytes_length_(data, len(data))
+    return data, fb.font
+
+def registerFontDataRepFactory():
+    from defcon import registerRepresentationFactory, Features
+    if FONTDATA_REP in Features.representationFactories:
+        for font in AllFonts():
+            font.features.naked().destroyAllRepresentations()
+    registerRepresentationFactory(Features, FONTDATA_REP, fontData, destructiveNotifications=["Features.Changed"])
+
+def _hashsableCmap(cmap):
+    d = {}
+    for k, v in cmap.items():
+        d[k] = tuple(v)
+    return tuple(sorted(d.items()))
 
 _dummyGlyph = FontToolsGlyph()
 
 LTR = 0
 RTL = 1
 
-
-def mergeUnicodeStack(glyphNames, stack, cmap, glyphOrder, direction):
+def mergeUnicodeStack(font, glyphNames, stack, cmap, hashableCmap, glyphOrder, direction):
     if not stack:
         return
     if len(stack) > 1:
         # cache this...
-        data, ftFont = fontData(cmap, glyphOrder)
+        data, ftFont = font.features.getRepresentation(FONTDATA_REP, cmap=hashableCmap)
         fontProvider = CoreText.CGDataProviderCreateWithCFData(data)
         cgFont = CoreText.CGFontCreateWithDataProvider(fontProvider)
         ctFont = CoreText.CTFontCreateWithGraphicsFont(cgFont, 0, None, None)
@@ -55,7 +76,7 @@ def mergeUnicodeStack(glyphNames, stack, cmap, glyphOrder, direction):
         glyphNames.extend([characterToGlyphName(c, cmap, fallback=c) for c in stack])
 
 
-def splitText(text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=0):
+def splitText(font, text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=0, fea=None):
     """
     Convert a given string to a set of glyph names
     based on the a given `text` for a `cmap`
@@ -69,7 +90,7 @@ def splitText(text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=
     text = text.replace("%s " % currentGlyphKey, currentGlyphKey)
     text = text.replace("%s " % currentSelectionKey, currentSelectionKey)
     glyphNames = []
-
+    hashableCmap = _hashsableCmap(cmap)
     for lineNumber, newLine in enumerate(text.split(newLineKey)):
         if lineNumber > 0:
             glyphNames.append(newLineKey)
@@ -92,7 +113,7 @@ def splitText(text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=
                     # start a glyph name compile.
                     if c == "/":
                         if unicodeStack:
-                            mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+                            mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, hashableCmap, allowShapingWithGlyphs, direction)
                         unicodeStack = []
                         # finishing a previous compile.
                         if compileStack is not None:
@@ -117,45 +138,19 @@ def splitText(text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=
                         if ord(c) not in cmap:
                             glyphNames.append(c)
                             if unicodeStack:
-                                mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+                                mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, hashableCmap, allowShapingWithGlyphs, direction)
                             unicodeStack = []
                         else:
                             unicodeStack.append(c)
                 if unicodeStack:
-                    mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+                    mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, hashableCmap, allowShapingWithGlyphs, direction)
                 unicodeStack = []
     # catch remaining compile.
     if compileStack is not None and compileStack:
         mergeCompileStack(glyphNames, compileStack, groups)
     elif unicodeStack:
-        mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+        mergeUnicodeStack(font, glyphNames, unicodeStack, cmap, hashableCmap, allowShapingWithGlyphs, direction)
     return glyphNames
-
-
-def fontData(cmap, glyphOrder):
-    glyphOrder = sorted(set(glyphOrder) | set(["space", ".notdef", ".fallbackGlyph"]))
-    fea = f"""
-languagesystem DFLT dflt;
-languagesystem arab dflt;
-
-{featurePartWriter(glyphOrder, "init")}
-{featurePartWriter(glyphOrder, "medi")}
-{featurePartWriter(glyphOrder, "fina")}
-"""
-    fb = FontBuilder(1024, isTTF=True)
-    fb.setupGlyphOrder(glyphOrder)
-    fb.setupCharacterMap({uni: names[0] for uni, names in cmap.items()})
-    fb.addOpenTypeFeatures(fea)
-    fb.setupGlyf({glyphName: _dummyGlyph for glyphName in glyphOrder})
-    fb.setupHorizontalMetrics({glyphName: (0, 0) for glyphName in glyphOrder})
-    fb.setupHorizontalHeader(ascent=0, descent=0)
-    data = io.BytesIO()
-    fb.save(data)
-    data = data.getvalue()
-    data = AppKit.NSData.dataWithBytes_length_(data, len(data))
-    return data, fb.font
-
-
 
 # overwrite internals
 
@@ -163,13 +158,10 @@ def get(self):
     text = self.getRaw()
     glyphNames = []
     direction = self.getNSTextField().baseWritingDirection() == AppKit.NSWritingDirectionRightToLeft
-    try:
-        glyphNames = splitText(text, self._layer.unicodeData, self._font.groups, self._font.keys(), direction)
-    except Exception as e:
-        print(e)
+    glyphNames = splitText(self._font, text, self._layer.unicodeData, self._font.groups, self._font.keys(), direction)
     return glyphNames
 
-
+registerFontDataRepFactory()
 import lib.UI.spaceCenter.glyphSequenceEditText
 lib.UI.spaceCenter.glyphSequenceEditText.GlyphSequenceEditText.get = get
 lib.UI.spaceCenter.glyphSequenceEditText.GlyphSequenceEditComboBox.get = get
