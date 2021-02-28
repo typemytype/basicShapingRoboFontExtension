@@ -11,6 +11,8 @@ def featurePartWriter(glyphOrder, feaTag):
     suffix = f".{feaTag}"
     lenSuffix = len(suffix)
     glyphNames = [glyphName for glyphName in glyphOrder if glyphName.endswith(suffix) and glyphName[:-lenSuffix] in glyphOrder]
+    if not glyphNames:
+        return ""
     return f"""
 feature {feaTag} {{
     script arab;
