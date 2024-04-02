@@ -68,16 +68,23 @@ def splitText(text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=
         return []
     # escape //
     text = text.replace("//", "/slash ")
-    text = text.replace("%s " % currentGlyphKey, currentGlyphKey)
-    text = text.replace("%s " % currentSelectionKey, currentSelectionKey)
+    text = text.replace(f"{currentGlyphKey} ", currentGlyphKey)
+    text = text.replace(f"{currentSelectionKey} ", currentSelectionKey)
     glyphNames = []
+    compileStack = None
+    unicodeStack = []
 
     for lineNumber, newLine in enumerate(text.split(newLineKey)):
+
         if lineNumber > 0:
             glyphNames.append(newLineKey)
         for currentGlyphNumber, currentGlyphLine in enumerate(newLine.split(currentGlyphKey)):
             if currentGlyphNumber > 0:
-                glyphNames.append(currentGlyphKey)
+                layerName = ""
+                if currentGlyphLine.startswith(layerNameSplitter):
+                    layerName, *_ = currentGlyphLine.split(" ")
+                    currentGlyphLine = currentGlyphLine[len(layerName) + 1:]
+                glyphNames.append(currentGlyphKey + layerName)
             for currentSelectionNumber, currentSelectionLine in enumerate(currentGlyphLine.split(currentSelectionKey)):
                 if currentSelectionNumber > 0:
                     glyphNames.append(currentSelectionKey)
@@ -117,19 +124,20 @@ def splitText(text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=
                     # adding a character that needs to be converted to a glyph name.
                     else:
                         if ord(c) not in cmap:
-                            glyphNames.append(c)
                             if unicodeStack:
                                 mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+                            glyphNames.append(c)
                             unicodeStack = []
                         else:
                             unicodeStack.append(c)
                 if unicodeStack:
                     mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
                 unicodeStack = []
+
     # catch remaining compile.
-    if compileStack is not None and compileStack:
+    if compileStack:
         mergeCompileStack(glyphNames, compileStack, groups)
-    elif unicodeStack:
+    if unicodeStack:
         mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
     return glyphNames
 
@@ -157,9 +165,8 @@ languagesystem arab dflt;
     data = AppKit.NSData.dataWithBytes_length_(data, len(data))
     return data, fb.font
 
-
-
 # overwrite internals
+
 
 def get(self):
     text = self.getRaw()
