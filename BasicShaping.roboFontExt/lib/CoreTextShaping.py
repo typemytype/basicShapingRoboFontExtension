@@ -7,31 +7,17 @@ from fontTools.ttLib.tables._g_l_y_f import Glyph as FontToolsGlyph
 from lib.UI.spaceCenter.glyphSequenceEditText import *
 
 
-def featurePartWriter(glyphOrder, feaTag):
-    suffix = f".{feaTag}"
-    lenSuffix = len(suffix)
-    glyphNames = [glyphName for glyphName in glyphOrder if glyphName.endswith(suffix) and glyphName[:-lenSuffix] in glyphOrder]
-    if not glyphNames:
-        return ""
-    return f"""
-feature {feaTag} {{
-    script arab;
-        sub [{" ".join([glyphName[:-lenSuffix] for glyphName in glyphNames])}] by [{" ".join(glyphNames)}];
-}} {feaTag};
-"""
-
 _dummyGlyph = FontToolsGlyph()
 
 LTR = 0
 RTL = 1
 
 
-def mergeUnicodeStack(glyphNames, stack, cmap, glyphOrder, direction):
+def mergeUnicodeStack(glyphNames, stack, cmap, glyphOrder, direction, data, ftFont):
     if not stack:
         return
     if len(stack) > 1:
         # cache this...
-        data, ftFont = fontData(cmap, glyphOrder)
         fontProvider = CoreText.CGDataProviderCreateWithCFData(data)
         cgFont = CoreText.CGFontCreateWithDataProvider(fontProvider)
         ctFont = CoreText.CTFontCreateWithGraphicsFont(cgFont, 0, None, None)
@@ -57,7 +43,7 @@ def mergeUnicodeStack(glyphNames, stack, cmap, glyphOrder, direction):
         glyphNames.extend([characterToGlyphName(c, cmap, fallback=c) for c in stack])
 
 
-def splitText(text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=0):
+def splitText(text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=0, fontData=None, fontObject=None):
     """
     Convert a given string to a set of glyph names
     based on the a given `text` for a `cmap`
@@ -125,37 +111,31 @@ def splitText(text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=
                     else:
                         if ord(c) not in cmap:
                             if unicodeStack:
-                                mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+                                mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction, fontData, fontObject)
                             glyphNames.append(c)
                             unicodeStack = []
                         else:
                             unicodeStack.append(c)
                 if unicodeStack:
-                    mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+                    mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction, fontData, fontObject)
                 unicodeStack = []
 
     # catch remaining compile.
     if compileStack:
         mergeCompileStack(glyphNames, compileStack, groups)
     if unicodeStack:
-        mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+        mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction, fontData, fontObject)
     return glyphNames
 
 
-def fontData(cmap, glyphOrder):
-    glyphOrder = sorted(set(glyphOrder) | set(["space", ".notdef", ".fallbackGlyph"]))
-    fea = f"""
-languagesystem DFLT dflt;
-languagesystem arab dflt;
+def buildFontData(layer, useFeatures=True):
+    glyphOrder = sorted(layer.keys() | set(["space", ".notdef", ".fallbackGlyph"]))
 
-{featurePartWriter(glyphOrder, "init")}
-{featurePartWriter(glyphOrder, "medi")}
-{featurePartWriter(glyphOrder, "fina")}
-"""
     fb = FontBuilder(1024, isTTF=True)
     fb.setupGlyphOrder(glyphOrder)
-    fb.setupCharacterMap({uni: names[0] for uni, names in cmap.items()})
-    fb.addOpenTypeFeatures(fea)
+    fb.setupCharacterMap({uni: names[0] for uni, names in layer.unicodeData.items()})
+    if useFeatures:
+        fb.addOpenTypeFeatures(layer.font.features.text)
     fb.setupGlyf({glyphName: _dummyGlyph for glyphName in glyphOrder})
     fb.setupHorizontalMetrics({glyphName: (0, 0) for glyphName in glyphOrder})
     fb.setupHorizontalHeader(ascent=0, descent=0)
@@ -165,15 +145,21 @@ languagesystem arab dflt;
     data = AppKit.NSData.dataWithBytes_length_(data, len(data))
     return data, fb.font
 
-# overwrite internals
 
+# overwrite internals
 
 def get(self):
     text = self.getRaw()
     glyphNames = []
     direction = self.getNSTextField().baseWritingDirection() == AppKit.NSWritingDirectionRightToLeft
     try:
-        glyphNames = splitText(text, self._layer.unicodeData, self._font.groups, self._font.keys(), direction)
+        try:
+            fontData, fontObject = buildFontData(self._layer)
+        except Exception as e:
+            print(f"Font build error: {e}")
+            fontData, fontObject = buildFontData(self._layer, useFeatures=False)
+
+        glyphNames = splitText(text, self._layer.unicodeData, self._font.groups, self._font.keys(), direction, fontData=fontData, fontObject=fontObject)
     except Exception as e:
         print(e)
     return glyphNames
