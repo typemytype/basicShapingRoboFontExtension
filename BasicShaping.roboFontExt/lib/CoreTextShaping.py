@@ -87,7 +87,7 @@ def splitText(text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=
                     # start a glyph name compile.
                     if c == "/":
                         if unicodeStack:
-                            mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction)
+                            mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction, fontData, fontObject)
                         unicodeStack = []
                         # finishing a previous compile.
                         if compileStack is not None:
