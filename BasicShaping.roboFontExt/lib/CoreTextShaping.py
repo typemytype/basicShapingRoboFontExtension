@@ -120,11 +120,14 @@ def splitText(text, cmap, groups=dict(), allowShapingWithGlyphs=None, direction=
                     mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction, fontData, fontObject)
                 unicodeStack = []
 
-    # catch remaining compile.
-    if compileStack:
-        mergeCompileStack(glyphNames, compileStack, groups)
-    if unicodeStack:
-        mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction, fontData, fontObject)
+        # catch remaining compile.
+        if compileStack is not None:
+            if compileStack:
+                mergeCompileStack(glyphNames, compileStack, groups)
+            compileStack = None
+        if unicodeStack:
+            mergeUnicodeStack(glyphNames, unicodeStack, cmap, allowShapingWithGlyphs, direction, fontData, fontObject)
+        unicodeStack = []
     return glyphNames
 
 
